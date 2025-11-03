@@ -6,17 +6,25 @@
 # This script is adapted from train_net.py for pure FPS benchmarking
 # using the accurate synchronization method.
 # ------------------------------------------------------------------------
+
+import os
+import sys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+# sys.path.insert(0, project_root)
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
+
+
 try:
     from shapely.errors import ShapelyDeprecationWarning
     import warnings
-    # Corrected the typo in the warning type
     warnings.filterwarnings('ignore', category=ShapelyDeprecationWarning)
 except:
     pass
 
 import time
 import logging
-import os
 import torch
 import itertools
 
@@ -27,7 +35,6 @@ from detectron2.engine import default_argument_parser, default_setup, launch, De
 from detectron2.projects.deeplab import add_deeplab_config
 from detectron2.utils.logger import setup_logger
 
-# MaskDINO imports to register modules
 from maskdino import (
     COCOInstanceNewBaselineDatasetMapper,
     COCOPanopticNewBaselineDatasetMapper,
@@ -38,13 +45,9 @@ from maskdino import (
     DetrDatasetMapper,
 )
 
-# A custom Trainer class that we can borrow methods from,
-# simplified from train_net.py
 class Trainer(DefaultTrainer):
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
-        # This is the default D2 test loader, which is what we want.
-        # It will use the TEST config, including INPUT.MIN_SIZE_TEST.
         return super().build_test_loader(cfg, dataset_name)
 
 def setup(args):
@@ -64,7 +67,7 @@ def setup(args):
     return cfg
 
 @torch.no_grad()
-def benchmark_fps(model, data_loader, warmup_runs, num_runs):
+def benchmark_fps(cfg, model, data_loader, warmup_runs, num_runs):
     """
     Runs the FPS benchmark using the logic from your script, iboy.
     Includes warm-up and torch.cuda.synchronize() for accuracy.
@@ -82,6 +85,7 @@ def benchmark_fps(model, data_loader, warmup_runs, num_runs):
         try:
             data = next(data_iter)
         except StopIteration:
+            # Reset iterator if warmup is longer than dataset
             data_iter = iter(data_loader)
             data = next(data_iter)
         
@@ -127,9 +131,8 @@ def benchmark_fps(model, data_loader, warmup_runs, num_runs):
 
     print("\n" + "="*40)
     print("--- Performance Test Results ---")
-    print(f"Config: {args.config_file}")
+    print(f"Config: {cfg.DATASETS.TEST[0]} @ {cfg.INPUT.MIN_SIZE_TEST}px")
     print(f"Model: {cfg.MODEL.WEIGHTS}")
-    print(f"Input Size (Short Edge): {cfg.INPUT.MIN_SIZE_TEST}")
     print(f"Batch size: {data_loader.batch_size}")
     print(f"Total batches tested: {num_runs}")
     print(f"Total images tested: {total_images}")
@@ -142,22 +145,17 @@ def benchmark_fps(model, data_loader, warmup_runs, num_runs):
 def main(args):
     cfg = setup(args)
     
-    # --- 1. Build Model ---
     model = Trainer.build_model(cfg)
     
-    # --- 2. Load Weights ---
     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
         cfg.MODEL.WEIGHTS, resume=False
     )
     model.eval()
 
-    # --- 3. Build Data Loader ---
-    # We use the first dataset from the TEST config
     dataset_name = cfg.DATASETS.TEST[0]
     data_loader = Trainer.build_test_loader(cfg, dataset_name)
     
-    # --- 4. Run Benchmark ---
-    benchmark_fps(model, data_loader, args.warmup_runs, args.num_runs)
+    benchmark_fps(cfg, model, data_loader, args.warmup_runs, args.num_runs)
 
 
 if __name__ == "__main__":
