@@ -12,8 +12,8 @@ import sys
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
-# sys.path.insert(0, project_root)
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+sys.path.insert(0, project_root)
+# sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
 
 try:
